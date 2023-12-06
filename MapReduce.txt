@@ -38,3 +38,283 @@
   585  sudo lsof -i:3306
   586  sbin/start-dfs.sh
   587  history
+
+
+
+Word count:
+
+
+
+Mapper Class: WordCountMapper.java
+
+
+import java.io.IOException;
+import java.util.StringTokenizer;
+
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+public class WordCountMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+
+    private final static IntWritable one = new IntWritable(1);
+    private Text word = new Text();
+
+    @Override
+    public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+        String line = value.toString();
+        StringTokenizer tokenizer = new StringTokenizer(line);
+
+        while (tokenizer.hasMoreTokens()) {
+            word.set(tokenizer.nextToken());
+            context.write(word, one);
+        }
+    }
+}
+
+
+Reducer Class: WordCountReducer.java
+
+
+import java.io.IOException;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Reducer;
+
+public class WordCountReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+
+    private IntWritable result = new IntWritable();
+
+    @Override
+    public void reduce(Text key, Iterable<IntWritable> values, Context context)
+            throws IOException, InterruptedException {
+        int sum = 0;
+
+        for (IntWritable value : values) {
+            sum += value.get();
+        }
+
+        result.set(sum);
+        context.write(key, result);
+    }
+}
+
+
+Driver Class: WordCountDriver.java
+
+
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class WordCountDriver {
+
+    public static void main(String[] args) throws Exception {
+        if (args.length != 2) {
+            System.err.println("Usage: WordCount <input path> <output path>");
+            System.exit(-1);
+        }
+
+        Job job = new Job();
+        job.setJarByClass(WordCountDriver.class);
+        job.setJobName("Word Count");
+
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+        job.setMapperClass(WordCountMapper.class);
+        job.setReducerClass(WordCountReducer.class);
+
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
+}
+
+
+
+MAX TEMPRATURE 
+
+
+
+mapper: MaxTemperatureMapper
+
+
+import java.io.IOException;
+import org.apache.hadoop.io.*;
+import org.apache.hadoop.mapreduce.Mapper;
+
+public class MaxTemperatureMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+    
+    private static final int MISSING = 9999;
+
+    @Override
+    public void map(LongWritable key, Text value, Context context) 
+            throws IOException, InterruptedException {
+        
+        String line = value.toString();
+        String year = line.substring(15, 19);
+        int airTemperature;
+
+        if (line.charAt(87) == '+') {
+            airTemperature = Integer.parseInt(line.substring(88, 92));
+        } else {
+            airTemperature = Integer.parseInt(line.substring(87, 92));
+        }
+
+        String quality = line.substring(92, 93);
+
+        if (airTemperature != MISSING && quality.matches("[01459]")) {
+            context.write(new Text(year), new IntWritable(airTemperature));
+        }
+    }
+}
+
+
+Reducer: MaxTemperatureReducer
+
+
+import java.io.IOException;
+import org.apache.hadoop.io.*;
+import org.apache.hadoop.mapreduce.Reducer;
+
+public class MaxTemperatureReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+
+    @Override
+    public void reduce(Text key, Iterable<IntWritable> values, Context context) 
+            throws IOException, InterruptedException {
+
+        int maxTemperature = Integer.MIN_VALUE;
+
+        for (IntWritable value : values) {
+            maxTemperature = Math.max(maxTemperature, value.get());
+        }
+
+        context.write(key, new IntWritable(maxTemperature));
+    }
+}
+
+
+Driver: MaxTemperatureDriver
+
+
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.*;
+import org.apache.hadoop.mapreduce.*;
+
+public class MaxTemperatureDriver {
+    
+    public static void main(String[] args) throws Exception {
+        
+        if (args.length != 2) {
+            System.err.println("Usage: MaxTemperature <input path> <output path>");
+            System.exit(-1);
+        }
+
+        Job job = new Job();
+        job.setJarByClass(MaxTemperatureDriver.class);
+        job.setJobName("Max Temperature");
+
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+        job.setMapperClass(MaxTemperatureMapper.class);
+        job.setReducerClass(MaxTemperatureReducer.class);
+
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
+}
+
+
+
+World Population CSV Analysis
+
+
+
+Mapper Code:
+
+
+import java.io.IOException;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+public class ContinentPopulationMapper extends Mapper<LongWritable, Text, Text, LongWritable> {
+    private static final int CONTINENT_COLUMN_INDEX = 4;
+    private static final int POPULATION_COLUMN_INDEX = 5;
+
+    @Override
+    protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+        if (key.get() > 0) { // Skip header line
+            String[] columns = value.toString().split(",");
+            if (columns.length >= POPULATION_COLUMN_INDEX + 1) {
+                String continent = columns[CONTINENT_COLUMN_INDEX].trim();
+                long population = Long.parseLong(columns[POPULATION_COLUMN_INDEX].trim());
+                context.write(new Text(continent), new LongWritable(population));
+            }
+        }
+    }
+}
+
+
+Reducer:
+
+
+import java.io.IOException;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Reducer;
+
+public class ContinentPopulationReducer extends Reducer<Text, LongWritable, Text, LongWritable> {
+    @Override
+    protected void reduce(Text key, Iterable<LongWritable> values, Context context)
+            throws IOException, InterruptedException {
+        long totalPopulation = 0;
+        for (LongWritable value : values) {
+            totalPopulation += value.get();
+        }
+        context.write(key, new LongWritable(totalPopulation));
+    }
+}
+
+
+Driver Code: 
+
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
+
+public class ContinentPopulationDriver {
+    public static void main(String[] args) throws Exception {
+        Configuration conf = new Configuration();
+        Job job = Job.getInstance(conf, "ContinentPopulation");
+
+        job.setJarByClass(ContinentPopulationDriver.class);
+        job.setMapperClass(ContinentPopulationMapper.class);
+        job.setReducerClass(ContinentPopulationReducer.class);
+
+        job.setInputFormatClass(TextInputFormat.class);
+        job.setOutputFormatClass(TextOutputFormat.class);
+
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(LongWritable.class);
+
+        TextInputFormat.addInputPath(job, new Path(args[0])); // Input path
+        TextOutputFormat.setOutputPath(job, new Path(args[1])); // Output path
+
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
+}
